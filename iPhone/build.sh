@@ -312,7 +312,7 @@ for config in $configs ; do
 		(cd "$basedir/$config" ; ln -sf "$fullvers/$basename.$ext")
 		
 		# Identify the provisioning profile used for this app
-		provisioning_file=`cat $basedir/xcodebuild.log | grep ProcessProductPackaging | grep "Provisioning Profiles" | grep "$basename.app" | sed 's/^.*\/\([A-F0-9-]\{36\}\).*/\1/'`
+		provisioning_file=`cat $basedir/xcodebuild.log | grep ProcessProductPackaging | grep "Provisioning Profiles" | grep "$basename.app" | sed 's/^.*\/\([A-F0-9-]\{36\}\).*/\1/' | sort -u`
 		cp "$HOME/Library/MobileDevice/Provisioning Profiles/${provisioning_file}.mobileprovision" "$releasedir/${provisioning_file}.mobileprovision"
 		
 		#update a symlink to the latest provisioning profile
