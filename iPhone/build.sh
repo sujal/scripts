@@ -287,7 +287,7 @@ for config in $configs ; do
 		if [ "$config" = "Distribute" -o "$config" = "Distribution" -o "$config" = "App Store" ] ; then
 			output="$releasedir/$basename.iTunesArtwork"
 			cp -f "$artwork" "$output"
-			printf "\t$output\n" >> $logname
+			printf "\t\t\t$output\n" >> $logname
 			ext=zip
 		else
 			[ -n "$artwork" ] && cp -f "$artwork" Payload/iTunesArtwork
@@ -300,13 +300,13 @@ for config in $configs ; do
 		rm -rf Payload
 
 		# add to the list of output files
-		printf "\t$output\n" >> $logname
+		printf "\t\t\t$output\n" >> $logname
 
 		# save debug symbols (if available) with the app
 		if [ -d "$app.dSYM" ] ; then
 			output="$releasedir/$basename.dSYM.zip"
 			ditto -c -k --keepParent "$app.dSYM" "$output" || die "Failed to compress debug info"
-			printf "\t$output\n" >> $logname
+			printf "\t\t\t$output\n" >> $logname
 		fi
 		# update a symlink to the latest version
 		(cd "$basedir/$config" ; ln -sf "$fullvers/$basename.$ext")
@@ -319,7 +319,7 @@ for config in $configs ; do
 		(cd "$basedir/$config" ; ln -sf "$fullvers/${provisioning_file}.mobileprovision")
 
 		if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" ] ; then
-			(cd "$basedir/$config" ; mv "$fullvers" "$basename-$config-$fullvers"; zip -9r "$basename-$config-$fullvers.zip" "$basename-$config-$fullvers"; mv "$basename-$config-$fullvers" "$fullvers";)
+			(cd "$basedir/$config" ; mv "$fullvers" "$basename-$config-$fullvers"; zip -9qr "$basename-$config-$fullvers.zip" "$basename-$config-$fullvers"; mv "$basename-$config-$fullvers" "$fullvers";)
 		fi
 		
 	done
