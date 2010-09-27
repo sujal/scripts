@@ -318,11 +318,14 @@ for config in $configs ; do
 		#update a symlink to the latest provisioning profile
 		(cd "$basedir/$config" ; ln -sf "$fullvers/${provisioning_file}.mobileprovision")
 
-		if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" ] ; then
-			(cd "$basedir/$config" ; mv "$fullvers" "$basename-$config-$fullvers"; zip -9qr "$basename-$config-$fullvers.zip" "$basename-$config-$fullvers"; mv "$basename-$config-$fullvers" "$fullvers";)
-		fi
 		
 	done
+
+	echo $project is the basename
+
+	if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" ] ; then
+		(cd "$basedir/$config" ; mv "$fullvers" "$project-$config-$fullvers"; zip -9qr "$project-$config-$fullvers.zip" "$project-$config-$fullvers"; mv "$project-$config-$fullvers" "$fullvers";)
+	fi
 	
 	rm "$basedir/xcodebuild.log"
 	
