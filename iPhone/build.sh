@@ -312,7 +312,7 @@ for config in $configs ; do
 		(cd "$basedir/$config" ; ln -sf "$fullvers/$basename.$ext")
 		
 		# Identify the provisioning profile used for this app
-		provisioning_file=`cat $basedir/xcodebuild.log | egrep "ProcessProductPackaging|product-pkg-utility" | grep "Provisioning Profiles" | grep "$basename.app" | sed 's/^.*\/\([A-F0-9-]\{36\}\).*/\1/' | sort -u`
+		provisioning_file=`cat $app/embedded.mobileprovision | perl -e '$/ = ""; while (<>) { if ($_ =~ m#UUID</key>\s+<string>(.*)</string>#m) { print $1, "\n"; } } '`
 		cp "$HOME/Library/MobileDevice/Provisioning Profiles/${provisioning_file}.mobileprovision" "$releasedir/${provisioning_file}.mobileprovision"
 		
 		#update a symlink to the latest provisioning profile
@@ -320,8 +320,6 @@ for config in $configs ; do
 
 		
 	done
-
-	echo $project is the basename
 
 	if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" ] ; then
 		(cd "$basedir/$config" ; mv "$fullvers" "$project-$config-$fullvers"; zip -9qr "$project-$config-$fullvers.zip" "$project-$config-$fullvers"; mv "$project-$config-$fullvers" "$fullvers";)
