@@ -113,6 +113,12 @@ git_fullvers() {
 	git rev-parse HEAD 2>/dev/null
 }
 
+find_QA_ipa() {
+cd $basedir/$config
+APP_IPA=`find . -name *QA.ipa -maxdepth 1 -mindepth 1`
+}
+
+
 if [ -d '.svn' ]; then
 	VCPREFIX=svn
 else
@@ -324,12 +330,11 @@ for config in $configs ; do
 	if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" ] ; then
 		(cd "$basedir/$config" ; mv "$fullvers" "$project-$config-$fullvers"; zip -9qr "$project-$config-$fullvers.zip" "$project-$config-$fullvers"; mv "$project-$config-$fullvers" "$fullvers";)
 
-        #deploy Ad Hoc build to testflight 
-        APP_IPA="$project.ipa"
+        #deploy Ad Hoc build to testflight
+	find_QA_ipa;
         RELEASENOTES="$fullvers"
         DISTRIBUTION_LISTS='me'
-
-        curl http://testflightapp.com/api/builds.json -F file="@$APP_IPA" -F api_token=$API_TOKEN -F team_token=$TEAM_TOKEN -F notes=$RELEASENOTES -F notify=true -F distribution_lists=$DISTRIBUTION_LISTS -v
+        (cd "$basedir/$config"; curl http://testflightapp.com/api/builds.json -F file="@$APP_IPA" -F api_token=$API_TOKEN -F team_token=$TEAM_TOKEN -F notes=$RELEASENOTES -F notify=false -F distribution_lists=$DISTRIBUTION_LISTS -v)
 	fi
 	
 	rm "$basedir/xcodebuild.log"
