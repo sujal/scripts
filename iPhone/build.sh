@@ -60,7 +60,9 @@ usage() {
 		printf "\n"
 	fi
 	echo "usage: build [-n] [config...]" >&2
-	echo "    -n : do not update build number or commit to git/svn" >&2
+	echo "    -n : do not update build number or commit to git/svn & do not distribute" >&2
+	echo "    -l : keep build local - do not distribute to testflight" >&2
+	echo "    -D : force distribution to testflight (useful w/ -n)" >&2
 	if [ -n "$xcodeconfigs" ] ; then
 		printf "\n    Known configs:" >&2
 		printf " %s" $xcodeconfigs >&2
@@ -125,6 +127,8 @@ fi
 project="$(basename $(pwd))"
 projectdir="$(pwd)"
 nocommit=0
+nodistribute=0
+force_distribute=0
 configs=
 buildbase=build
 
@@ -162,7 +166,14 @@ fi
 #
 while [ -n "$*" ]; do
 	case "$1" in
-		-n) nocommit=1 ; shift ;;
+		-n) nocommit=1 
+		    if [ $force_distribute -eq 0 ] ; then
+		      nodistribute=1
+		    fi 
+		    shift
+		    ;;
+		-l) nodistribute=1 ; shift ;;
+		-D) force_distribute=1 ; nodistribute=0 ; shift ;;
 		-*) usage ;;
 		*)	if echo $xcodeconfigs | grep -wq "$1" ; then
 				if [ -z "$configs" ]; then
@@ -278,7 +289,13 @@ for config in $configs ; do
 	releasedir="$basedir/$config/$fullvers"
 	mkdir -p "$releasedir"
 
-	(xcodebuild -alltargets -parallelizeTargets -configuration "$config" clean build | tee "$basedir/xcodebuild.log") || die "Build failed"
+	(xcodebuild -alltargets -parallelizeTargets -configuration "$config" clean build 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+
+  xcodebuild_fail_count=`grep -c '\*\* BUILD FAILED \*\*' "$basedir/xcodebuild.log"`
+
+  if [ "$xcodebuild_fail_count" -ne "0" ]; then 
+    die "Build Failed - see above"
+  fi
 
 	# Package each app
 	echo "$xcodetargets" | while read basename ; do
@@ -333,22 +350,15 @@ for config in $configs ; do
 		#update a symlink to the latest provisioning profile
 		(cd "$basedir/$config" ; ln -sf "$fullvers/${provisioning_file}.mobileprovision")
 
-    echo "Ad Hoc is $is_adhoc $config"
-
-    if [ "$is_adhoc" -eq "1" ]; then
-      echo "about to check skiplist"
+    if [ "$nodistribute" -eq "0" -a "$is_adhoc" -eq "1" ]; then
     
       SKIP_LIST=0
       if [ -f "$projectdir/.skiplist" ]; then
         SKIP_LIST=`grep -xc "$basename" "$projectdir/.skiplist"`
       fi
 
-      echo "$nocommit - $SKIP_LIST - $projectdir"
-    
-      if [ "$nocommit" -eq "0" -a "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
+      if [ "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
         . "$projectdir/.testflight"
-        echo using $API_TOKEN
-        echo using $TEAM_TOKEN
       
         TESTFLIGHT_URL=`curl http://testflightapp.com/api/builds.json \
           -F file="@$releasedir/$basename.$ext" \
@@ -375,7 +385,7 @@ for config in $configs ; do
 		(cd "$basedir/$config" ; mv "$fullvers" "$project-$config-$fullvers"; zip -9qr "$project-$config-$fullvers.zip" "$project-$config-$fullvers"; mv "$project-$config-$fullvers" "$fullvers";)
 	fi
 	
-	rm "$basedir/xcodebuild.log"
+	# rm "$basedir/xcodebuild.log"
 	
 done
 IFS=$SAVEIFS
