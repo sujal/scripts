@@ -123,9 +123,12 @@ fi
 # Default options
 #
 project="$(basename $(pwd))"
+projectdir="$(pwd)"
 nocommit=0
 configs=
 buildbase=build
+
+echo $projectdir
 
 # source repos shared across multiple projects, these must be clean and get
 # tagged with everything else
@@ -254,6 +257,18 @@ for config in $configs ; do
 	
 	echo "CONFIG=$config"
 
+  # set flags to make logic consistent about configs
+	is_adhoc=0
+	is_appstore=0
+
+	if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" -o "$config" = "Adhoc" ] ; then
+    is_adhoc=1
+  fi
+  
+  if [ "$config" = "Distribute" -o "$config" = "Distribution" -o "$config" = "App Store" ] ; then
+	  is_appstore=1
+  fi  
+
 	# packaged output goes in Releases if tagged, Development otherwise
 	if [ "$nocommit" -eq "0" ] ; then
 		basedir=Releases
@@ -284,7 +299,7 @@ for config in $configs ; do
 
 		# Distribution builds have a .zip extension, development
 		# builds have a .ipa extension
-		if [ "$config" = "Distribute" -o "$config" = "Distribution" -o "$config" = "App Store" ] ; then
+		if [ "$is_appstore" = "1" ] ; then
 			output="$releasedir/$basename.iTunesArtwork"
 			cp -f "$artwork" "$output"
 			printf "\t\t\t$output\n" >> $logname
@@ -318,10 +333,44 @@ for config in $configs ; do
 		#update a symlink to the latest provisioning profile
 		(cd "$basedir/$config" ; ln -sf "$fullvers/${provisioning_file}.mobileprovision")
 
+    echo "Ad Hoc is $is_adhoc $config"
+
+    if [ "$is_adhoc" -eq "1" ]; then
+      echo "about to check skiplist"
+    
+      SKIP_LIST=0
+      if [ -f "$projectdir/.skiplist" ]; then
+        SKIP_LIST=`grep -xc "$basename" "$projectdir/.skiplist"`
+      fi
+
+      echo "$nocommit - $SKIP_LIST - $projectdir"
+    
+      if [ "$nocommit" -eq "0" -a "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
+        . "$projectdir/.testflight"
+        echo using $API_TOKEN
+        echo using $TEAM_TOKEN
+      
+        TESTFLIGHT_URL=`curl http://testflightapp.com/api/builds.json \
+          -F file="@$releasedir/$basename.$ext" \
+          -F dsym="@$releasedir/$basename.dSYM.zip" \
+          -F api_token="$API_TOKEN" \
+          -F team_token="$TEAM_TOKEN" \
+          -F notes='This build was uploaded via the upload API'  \
+          -F notify=True  \
+          -F distribution_lists='Everyone' | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
+        
+        if [ -f "$projectdir/.campfire" ]; then
+          . "$projectdir/.campfire"
+          curl -u "$CF_ROOM_TOKEN":X -H 'Content-Type: application/json' \
+          -d "{\"message\":{\"body\":\"$basename $fullvers ($config) available on Testflight: $TESTFLIGHT_URL\"}}" \
+          "https://$CF_ROOM_SUBDOMAIN.campfirenow.com/room/$CF_ROOM_ID/speak.json"
+        fi
+      fi
+    fi #end is_adhoc check
 		
 	done
 
-	if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" ] ; then
+	if [ "$is_adhoc" -eq "1" ] ; then
 		(cd "$basedir/$config" ; mv "$fullvers" "$project-$config-$fullvers"; zip -9qr "$project-$config-$fullvers.zip" "$project-$config-$fullvers"; mv "$project-$config-$fullvers" "$fullvers";)
 	fi
 	
