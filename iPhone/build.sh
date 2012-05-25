@@ -357,7 +357,8 @@ for config in $configs ; do
           -F team_token="$TEAM_TOKEN" \
           -F notes='This build was uploaded via the upload API'  \
           -F notify=True  \
-          -F distribution_lists='Everyone' | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
+          -F replace=True \
+          -F distribution_lists="$DISTRIBUTION_LISTS" | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
         
         if [ -f "$projectdir/.campfire" ]; then
           . "$projectdir/.campfire"
