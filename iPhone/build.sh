@@ -140,21 +140,21 @@ sharedsources=
 
 # all known configurations
 xcodeconfigs=$(xcodebuild -list | sed '
-		/Build Configurations:/,/^[[:space:]]*$/	!d
-		/Build Configurations/				d
-		/^[[:space:]]*$/				d
-		s/[[:space:]]*\([^[:space:]].*\).*/\1/
-		s/[[:space:]][(]Active[)]$//
-	'| perl -e '$a="";while(<>){$a.=$_;} $a=~s/\n/:/mg; print $a;')
+    /Build Configurations:/,/^[[:space:]]*$/  !d
+    /Build Configurations/        d
+    /^[[:space:]]*$/        d
+    s/[[:space:]]*\([^[:space:]].*\).*/\1/
+    s/[[:space:]][(]Active[)]$//
+  '| perl -e '$a="";while(<>){$a.=$_;} $a=~s/\n/:/mg; print $a;')
 
 xcodetargets="$(xcodebuild -list | sed '
-		/Targets:/,/^[[:space:]]*$/			!d
-		/Targets/					d
-		/^[[:space:]]*$/				d
-		s/^[[:space:]]*//
-		s/(.*)//
-		s/[[:space:]]*$//
-	')"
+    /Targets:/,/^[[:space:]]*$/     !d
+    /Targets/         d
+    /^[[:space:]]*$/        d
+    s/^[[:space:]]*//
+    s/(.*)//
+    s/[[:space:]]*$//
+  ')"
 
 if [ -z "$xcodeconfigs" ] ; then
 	# no project bundle?
@@ -260,14 +260,35 @@ rm -rf Payload
 logname=$(mktemp /tmp/build.temp.XXXXXX)
 printf "Created:" > $logname
 
+target_spec="-alltargets"
+if [ -f "$projectdir/.skiplist" ] ; then
+  target_spec=""
+  new_xcode_targets=""
+  ignored_targets=`cat "$projectdir/.skiplist"`
+  finaltargetlist=$(mktemp /tmp/build.targetlist.temp.XXXXXX)
+  echo -e "$xcodetargets" > $finaltargetlist
+  new_xcode_targets=`cat $finaltargetlist | grep -vxf "$projectdir/.skiplist"`
+  
+  for candidate_target in  $new_xcode_targets
+  do
+    target_spec="$target_spec:-target:$candidate_target"
+  done
+  target_spec=`echo $target_spec | sed 's/^:*//g'`
+  xcodetargets=$new_xcode_targets
+  echo "----"
+  echo "Only building:"
+  echo -e "$xcodetargets"
+  echo "----"
+fi
+
 # build and package each requested config
 SAVEIFS=$IFS
 IFS=$':'
 for config in $configs ; do
 	config=`echo $config | sed 's/^[[:space:]]//'`
-	
-	echo "CONFIG=$config"
 
+	echo "CONFIG=$config"
+	
   # set flags to make logic consistent about configs
 	is_adhoc=0
 	is_appstore=0
@@ -287,9 +308,9 @@ for config in $configs ; do
 		basedir=Development
 	fi
 	releasedir="$basedir/$config/$fullvers"
-	mkdir -p "$releasedir"
+	mkdir -p "$releasedir"  
 
-	(xcodebuild -alltargets -parallelizeTargets -configuration "$config" clean build 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+  (xcodebuild $target_spec -parallelizeTargets -configuration "$config" clean build 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
 
   xcodebuild_fail_count=`grep -c '\*\* BUILD FAILED \*\*' "$basedir/xcodebuild.log"`
 
