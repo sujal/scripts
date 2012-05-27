@@ -275,6 +275,7 @@ if [ -f "$projectdir/.skiplist" ] ; then
   done
   target_spec=`echo $target_spec | sed 's/^:*//g'`
   xcodetargets=$new_xcode_targets
+  rm "$finaltargetlist"
   echo "----"
   echo "Only building:"
   echo -e "$xcodetargets"
