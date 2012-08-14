@@ -1,20 +1,9 @@
 #! /bin/bash
 #
 # iPhone packaging script
-#
-# ============================================================================
-# Version 1.1
-# July 14, 2009
-#
-# - support shared source repositories
-# - build all targets in the project correctly
-# - leave iTunes Artwork beside distribution bundles, not inside
-# - better handling for targets with spaces in their names
-#
-# ------------
-#
-# Version 1.0
-# May 24, 2009
+# Copyright 2012 Sujal Shah <codesujal@gmail.com>
+# 
+# Using code originally by Frank Szczerba (See copyright notice below)
 #
 # ============================================================================
 #
@@ -294,13 +283,15 @@ for config in $configs ; do
 	is_adhoc=0
 	is_appstore=0
 
-	if [ "$config" = "Ad Hoc" -o "$config" = "Ad Hoc Official" -o "$config" = "Beta" -o "$config" = "Adhoc" ] ; then
+  matchable_config=`echo "$config" | tr "[:upper:]" "[:lower:]" | tr -d " -" `
+
+	if [ "$matchable_config" = "adhoc" -o "$matchable_config" = "adhocofficial" -o "$matchable_config" = "beta" ] ; then
     is_adhoc=1
   fi
-  
-  if [ "$config" = "Distribute" -o "$config" = "Distribution" -o "$config" = "App Store" ] ; then
+
+  if [ "$matchable_config" = "distribute" -o "$matchable_config" = "distribution" -o "$matchable_config" = "appstore" ] ; then
 	  is_appstore=1
-  fi  
+  fi
 
 	# packaged output goes in Releases if tagged, Development otherwise
 	if [ "$nocommit" -eq "0" ] ; then
