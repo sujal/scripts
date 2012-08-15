@@ -48,14 +48,14 @@ usage() {
 		echo "$@" >&2
 		printf "\n"
 	fi
-	echo "usage: build [-n] [config...]" >&2
+	echo "usage: build [-nlD] [scheme...]" >&2
 	echo "    -n : do not update build number or commit to git/svn & do not distribute" >&2
 	echo "    -l : keep build local - do not distribute to testflight" >&2
 	echo "    -D : force distribution to testflight (useful w/ -n)" >&2
-	if [ -n "$xcodeconfigs" ] ; then
-		printf "\n    Known configs:" >&2
-		printf " %s" $xcodeconfigs >&2
-		printf "\n\nDefault action is to build all configs\n" >&2
+	if [ -n "$xcodeschemes" ] ; then
+		printf "\n    Known schemes:" >&2
+		printf " %s" $xcodeschemes >&2
+		printf "\n\nscheme is REQUIRED\n" >&2
 	else
 		echo "This does not appear to be a valid project directory!" >&2
 	fi
@@ -118,8 +118,10 @@ projectdir="$(pwd)"
 nocommit=0
 nodistribute=0
 force_distribute=0
-configs=
+schemes=
 buildbase=build
+build_command=archive
+archive_dir=$HOME/Library/Developer/Xcode/Archives/`date +"%Y-%m-%d"`
 
 echo $projectdir
 
@@ -128,24 +130,18 @@ echo $projectdir
 sharedsources=
 
 # all known configurations
-xcodeconfigs=$(xcodebuild -list | sed '
-    /Build Configurations:/,/^[[:space:]]*$/  !d
-    /Build Configurations/        d
-    /^[[:space:]]*$/        d
-    s/[[:space:]]*\([^[:space:]].*\).*/\1/
-    s/[[:space:]][(]Active[)]$//
-  '| perl -e '$a="";while(<>){$a.=$_;} $a=~s/\n/:/mg; print $a;')
 
-xcodetargets="$(xcodebuild -list | sed '
-    /Targets:/,/^[[:space:]]*$/     !d
-    /Targets/         d
+xcodeproject="$(xcodebuild -list | perl -ne ' if (/Information about project "([^"]+)"/) { print $1,"\n"; }')"
+
+xcodeschemes="$(xcodebuild -list | sed '
+    /Schemes:/,/^[[:space:]]*$/  !d
+    /Schemes/        d
     /^[[:space:]]*$/        d
     s/^[[:space:]]*//
     s/(.*)//
-    s/[[:space:]]*$//
-  ')"
+    s/[[:space:]]*$//  ')"
 
-if [ -z "$xcodeconfigs" ] ; then
+if [ -z "$xcodeproject" ] ; then
 	# no project bundle?
 	usage;
 fi
@@ -164,26 +160,26 @@ while [ -n "$*" ]; do
 		-l) nodistribute=1 ; shift ;;
 		-D) force_distribute=1 ; nodistribute=0 ; shift ;;
 		-*) usage ;;
-		*)	if echo $xcodeconfigs | grep -wq "$1" ; then
-				if [ -z "$configs" ]; then
-					configs="$1"
+		*)	if echo $xcodeschemes | grep -wq "$1" ; then
+				if [ -z "$schemes" ]; then
+					schemes="$1"
 				else
-					configs="${configs}:$1";
+					schemes="${schemes}:$1";
 				fi
 				shift 
 			else
-				usage "Invalid config '$1'"
+				usage "Invalid scheme '$1'"
 			fi
 			;;
 	esac
 done
 
-# default to building all configs
-if [ -z "$configs" ] ; then
-	configs=$xcodeconfigs
+# require a scheme
+if [ -z "$schemes" ] ; then
+	usage;
 fi
 
-echo "$configs"
+echo "$schemes"
 
 # check for modified files, bail if found
 isdirty=0
@@ -202,6 +198,7 @@ for d in . $sharedsources ; do
 done
 
 if [ "$nocommit" -eq "0" ] ; then
+
 	# read out the marketing version
 	# do this separate from the cut so we can check the exit code
 	mvers=$(agvtool mvers -terse | head -1)
@@ -234,6 +231,7 @@ if [ "$nocommit" -eq "0" ] ; then
 		(cd $d ; ${VCPREFIX}_tag $libtag "$project $tag")
 	done
 else
+
 	# not committing, use the SHA1 as the version
 	TAGFUNCTION="${VCPREFIX}_fullvers"
 	fullvers=`$TAGFUNCTION`
@@ -249,60 +247,28 @@ rm -rf Payload
 logname=$(mktemp /tmp/build.temp.XXXXXX)
 printf "Created:" > $logname
 
-target_spec="-alltargets"
-if [ -f "$projectdir/.skiplist" ] ; then
-  target_spec=""
-  new_xcode_targets=""
-  ignored_targets=`cat "$projectdir/.skiplist"`
-  finaltargetlist=$(mktemp /tmp/build.targetlist.temp.XXXXXX)
-  echo -e "$xcodetargets" > $finaltargetlist
-  new_xcode_targets=`cat $finaltargetlist | grep -vxf "$projectdir/.skiplist"`
-  
-  for candidate_target in  $new_xcode_targets
-  do
-    target_spec="$target_spec:-target:$candidate_target"
-  done
-  target_spec=`echo $target_spec | sed 's/^:*//g'`
-  xcodetargets=$new_xcode_targets
-  rm "$finaltargetlist"
-  echo "----"
-  echo "Only building:"
-  echo -e "$xcodetargets"
-  echo "----"
-fi
+# read in build config
+. "$projectdir/.codesigning"
 
 # build and package each requested config
 SAVEIFS=$IFS
 IFS=$':'
-for config in $configs ; do
-	config=`echo $config | sed 's/^[[:space:]]//'`
+for scheme in $schemes ; do
+	scheme=`echo $scheme | sed 's/^[[:space:]]//'`
 
-	echo "CONFIG=$config"
+	echo "SCHEME=$scheme"
 	
-  # set flags to make logic consistent about configs
-	is_adhoc=0
-	is_appstore=0
-
-  matchable_config=`echo "$config" | tr "[:upper:]" "[:lower:]" | tr -d " -" `
-
-	if [ "$matchable_config" = "adhoc" -o "$matchable_config" = "adhocofficial" -o "$matchable_config" = "beta" ] ; then
-    is_adhoc=1
-  fi
-
-  if [ "$matchable_config" = "distribute" -o "$matchable_config" = "distribution" -o "$matchable_config" = "appstore" ] ; then
-	  is_appstore=1
-  fi
-
 	# packaged output goes in Releases if tagged, Development otherwise
 	if [ "$nocommit" -eq "0" ] ; then
 		basedir=Releases
 	else
 		basedir=Development
 	fi
-	releasedir="$basedir/$config/$fullvers"
+
+	releasedir="$basedir/$scheme/$fullvers"
 	mkdir -p "$releasedir"  
 
-  (xcodebuild $target_spec -parallelizeTargets -configuration "$config" clean build 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+  (xcodebuild -project "$xcodeproject.xcodeproj" -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
 
   xcodebuild_fail_count=`grep -c '\*\* BUILD FAILED \*\*' "$basedir/xcodebuild.log"`
 
@@ -311,94 +277,73 @@ for config in $configs ; do
   fi
 
 	# Package each app
-	echo "$xcodetargets" | while read basename ; do
-		app="$buildbase/$config-iphoneos/$basename.app"
 
-		mkdir -p Payload/Payload
-		cp -Rp "$app" Payload/Payload
+  latestXCArchive="$archive_dir/$(cd "$archive_dir"; ls -1dt $scheme* | head -1)"
+  # latestXCArchive="${latestXCArchive%?}"
+  app=`find "$latestXCArchive" -name *.app`
+  appname=$scheme # could derive this from $app
+  dsym="$latestXCArchive/dSYMs/$scheme.app.dSYM"
+  
+  echo "$latestXCArchive"
 
-		# Get app-specific iTunes artwork or project-specific artwork
-		# if available
-		if [ -f "$basename".iTunesArtwork ] ; then
-			artwork="$basename".iTunesArtwork
-		elif [ -f iTunesArtwork ] ; then
-			artwork=iTunesArtwork
-		else
-			artwork=
-		fi
+  # package for ad hoc
 
-		# Distribution builds have a .zip extension, development
-		# builds have a .ipa extension
-		if [ "$is_appstore" = "1" ] ; then
-			output="$releasedir/$basename.iTunesArtwork"
-			cp -f "$artwork" "$output"
-			printf "\t\t\t$output\n" >> $logname
-			ext=zip
-		else
-			[ -n "$artwork" ] && cp -f "$artwork" Payload/iTunesArtwork
-			ext=ipa
-		fi
+  VARSAFE_SCHEME=`echo $scheme | tr "[[:lower:]] -" "[[:upper:]]_"`
+  ADHOC_PRO=`eval echo \\$${VARSAFE_SCHEME}_ADHOC_PROFILE`
+  STORE_PRO=`eval echo \\$${VARSAFE_SCHEME}_STORE_PROFILE`
 
-		# zip the Payload directory then delete it
-		output="$releasedir/$basename.$ext"
-		ditto -c -k Payload "$output" || die "Failed to compress"
-		rm -rf Payload
+  echo \n\n\n==========================================================
+  echo "Signing for distribution and adhoc as $DISTRIBUTION_IDENTITY"
+  echo "app: $app"
+  echo ==========================================================\n\n\n
 
-		# add to the list of output files
+  /usr/bin/xcrun -sdk iphoneos PackageApplication -v "$app" \
+       -o "$projectdir/$releasedir/$scheme.ipa" \
+       --sign "$DISTRIBUTION_IDENTITY" \
+       --embed "$ADHOC_PRO"
+
+  # package for store
+  cp -Rp "$app" "$projectdir/$releasedir/"
+  codesign -f -vv -s "$DISTRIBUTION_IDENTITY" -i "$STORE_PRO" "$projectdir/$releasedir/$scheme.app"
+  ditto -c -k --keepParent "$projectdir/$releasedir/$scheme.app" "$projectdir/$releasedir/$scheme.app.zip"
+
+	# save debug symbols (if available) with the app
+  echo \n\n\n==========================================================
+  echo "saving DSYM"
+  echo "dsym: $dsym"
+  echo ==========================================================\n\n\n
+
+	if [ -d "$dsym" ] ; then
+		output="$projectdir/$releasedir/$scheme.dSYM.zip"
+		ditto -c -k --keepParent "$dsym" "$output" || die "Failed to compress debug info"
 		printf "\t\t\t$output\n" >> $logname
-
-		# save debug symbols (if available) with the app
-		if [ -d "$app.dSYM" ] ; then
-			output="$releasedir/$basename.dSYM.zip"
-			ditto -c -k --keepParent "$app.dSYM" "$output" || die "Failed to compress debug info"
-			printf "\t\t\t$output\n" >> $logname
-		fi
-		# update a symlink to the latest version
-		(cd "$basedir/$config" ; ln -sf "$fullvers/$basename.$ext")
-		
-		# Identify the provisioning profile used for this app
-		provisioning_file=`cat $app/embedded.mobileprovision | perl -e '$/ = ""; while (<>) { if ($_ =~ m#UUID</key>\s+<string>(.*)</string>#m) { print $1, "\n"; } } '`
-		cp "$HOME/Library/MobileDevice/Provisioning Profiles/${provisioning_file}.mobileprovision" "$releasedir/${provisioning_file}.mobileprovision"
-		
-		#update a symlink to the latest provisioning profile
-		(cd "$basedir/$config" ; ln -sf "$fullvers/${provisioning_file}.mobileprovision")
-
-    if [ "$nodistribute" -eq "0" -a "$is_adhoc" -eq "1" ]; then
-    
-      SKIP_LIST=0
-      if [ -f "$projectdir/.skiplist" ]; then
-        SKIP_LIST=`grep -xc "$basename" "$projectdir/.skiplist"`
-      fi
-
-      if [ "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
-        . "$projectdir/.testflight"
-      
-        TESTFLIGHT_URL=`curl http://testflightapp.com/api/builds.json \
-          -F file="@$releasedir/$basename.$ext" \
-          -F dsym="@$releasedir/$basename.dSYM.zip" \
-          -F api_token="$API_TOKEN" \
-          -F team_token="$TEAM_TOKEN" \
-          -F notes='This build was uploaded via the upload API'  \
-          -F notify=True  \
-          -F replace=True \
-          -F distribution_lists="$DISTRIBUTION_LISTS" | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
-        
-        if [ -f "$projectdir/.campfire" ]; then
-          . "$projectdir/.campfire"
-          curl -u "$CF_ROOM_TOKEN":X -H 'Content-Type: application/json' \
-          -d "{\"message\":{\"body\":\"$basename $fullvers ($config) available on Testflight: $TESTFLIGHT_URL\"}}" \
-          "https://$CF_ROOM_SUBDOMAIN.campfirenow.com/room/$CF_ROOM_ID/speak.json"
-        fi
-      fi
-    fi #end is_adhoc check
-		
-	done
-
-	if [ "$is_adhoc" -eq "1" ] ; then
-		(cd "$basedir/$config" ; mv "$fullvers" "$project-$config-$fullvers"; zip -9qr "$project-$config-$fullvers.zip" "$project-$config-$fullvers"; mv "$project-$config-$fullvers" "$fullvers";)
 	fi
 	
-	# rm "$basedir/xcodebuild.log"
+  if [ "$nodistribute" -eq "0" ]; then
+  
+    SKIP_LIST=0 # leftover
+
+    if [ "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
+      . "$projectdir/.testflight"
+    
+      TESTFLIGHT_URL=`curl http://testflightapp.com/api/builds.json \
+        -F file="@$projectdir/$releasedir/$scheme.ipa" \
+        -F dsym="@$projectdir/$releasedir/$scheme.dSYM.zip" \
+        -F api_token="$API_TOKEN" \
+        -F team_token="$TEAM_TOKEN" \
+        -F notes='This build was uploaded via the upload API'  \
+        -F notify=True  \
+        -F replace=True \
+        -F distribution_lists="$DISTRIBUTION_LISTS" | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
+      
+      if [ -f "$projectdir/.campfire" ]; then
+        . "$projectdir/.campfire"
+        curl -u "$CF_ROOM_TOKEN":X -H 'Content-Type: application/json' \
+        -d "{\"message\":{\"body\":\"$scheme $fullvers available on Testflight: $TESTFLIGHT_URL\"}}" \
+        "https://$CF_ROOM_SUBDOMAIN.campfirenow.com/room/$CF_ROOM_ID/speak.json"
+      fi
+    fi
+  fi #end is_adhoc check
 	
 done
 IFS=$SAVEIFS
