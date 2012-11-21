@@ -302,10 +302,10 @@ for scheme in $schemes ; do
        --sign "$DISTRIBUTION_IDENTITY" \
        --embed "$ADHOC_PRO"
 
-  # package for store
-  cp -Rp "$app" "$projectdir/$releasedir/"
-  codesign -f -vv -s "$DISTRIBUTION_IDENTITY" -i "$STORE_PRO" "$projectdir/$releasedir/$scheme.app"
-  ditto -c -k --keepParent "$projectdir/$releasedir/$scheme.app" "$projectdir/$releasedir/$scheme.app.zip"
+  # # package for store
+  # cp -Rp "$app" "$projectdir/$releasedir/"
+  # codesign -f -vv -s "$DISTRIBUTION_IDENTITY" -i "$STORE_PRO" "$projectdir/$releasedir/$scheme.app"
+  # ditto -c -k --keepParent "$projectdir/$releasedir/$scheme.app" "$projectdir/$releasedir/$scheme.app.zip"
 
 	# save debug symbols (if available) with the app
   echo \n\n\n==========================================================
@@ -326,12 +326,20 @@ for scheme in $schemes ; do
     if [ "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
       . "$projectdir/.testflight"
     
+      echo
+      echo "Enter release notes (end w/ a ^D):"
+      echo
+      NOTES_FILENAME=`mktemp iphonebuildscript`
+      cat > $NOTES_FILENAME
+      RELEASE_NOTES="`cat $NOTES_FILENAME`"
+      rm $NOTES_FILENAME
+
       TESTFLIGHT_URL=`curl http://testflightapp.com/api/builds.json \
         -F file="@$projectdir/$releasedir/$scheme.ipa" \
         -F dsym="@$projectdir/$releasedir/$scheme.dSYM.zip" \
         -F api_token="$API_TOKEN" \
         -F team_token="$TEAM_TOKEN" \
-        -F notes='This build was uploaded via the upload API'  \
+        -F notes="$RELEASE_NOTES"  \
         -F notify=True  \
         -F replace=True \
         -F distribution_lists="$DISTRIBUTION_LISTS" | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
