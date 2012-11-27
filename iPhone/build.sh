@@ -87,7 +87,7 @@ git_status() {
 }
 
 git_dirtycheck() {
-	! (cd "$1" ; git status) | grep -q 'nothing to commit (working directory clean)'
+	! (cd "$1" ; git status) | grep -q 'nothing to commit'
 }
 
 git_commit() {
