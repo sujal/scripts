@@ -2,7 +2,7 @@
 #
 # iPhone packaging script
 # Copyright 2012 Sujal Shah <codesujal@gmail.com>
-# 
+#
 # Using code originally by Frank Szczerba (See copyright notice below)
 #
 # ============================================================================
@@ -43,6 +43,9 @@ die() {
 	exit 1
 }
 
+export PATH=$PATH:/usr/local/bin
+
+
 usage() {
 	if [ -n "$1" ] ; then
 		echo "$@" >&2
@@ -61,6 +64,23 @@ usage() {
 	fi
 	exit 3
 }
+
+processIcon() {
+    working_path=$1
+    base_file="${projectdir}/${2}"
+    if [ ! -f "$base_file" ]; then return; fi
+
+    target_file=`echo "${2}" | sed "s/_base//"`
+    target_path="${working_path}/${target_file}"
+
+    width=`identify -format %w "${base_file}"`
+
+    convert -background '#0008' -fill white -gravity center -size ${width}x40\
+    caption:"${fullvers}"\
+    "${base_file}" +swap -gravity south -composite "${target_path}"
+}
+
+
 
 svn_status() {
 	svn status
@@ -91,9 +111,9 @@ git_dirtycheck() {
 }
 
 git_commit() {
-	
+
 	git commit -a -n -m "$1"
-	
+
 }
 
 git_tag() {
@@ -101,7 +121,7 @@ git_tag() {
 }
 
 git_fullvers() {
-	git rev-parse HEAD 2>/dev/null
+	git rev-parse --short HEAD 2>/dev/null
 }
 
 if [ -d '.svn' ]; then
@@ -151,10 +171,10 @@ fi
 #
 while [ -n "$*" ]; do
 	case "$1" in
-		-n) nocommit=1 
+		-n) nocommit=1
 		    if [ $force_distribute -eq 0 ] ; then
 		      nodistribute=1
-		    fi 
+		    fi
 		    shift
 		    ;;
 		-l) nodistribute=1 ; shift ;;
@@ -166,7 +186,7 @@ while [ -n "$*" ]; do
 				else
 					schemes="${schemes}:$1";
 				fi
-				shift 
+				shift
 			else
 				usage "Invalid scheme '$1'"
 			fi
@@ -235,7 +255,7 @@ else
 	# not committing, use the SHA1 as the version
 	TAGFUNCTION="${VCPREFIX}_fullvers"
 	fullvers=`$TAGFUNCTION`
-	
+
 	# if it's dirty, append the date, time, and timezone
 	if [ "$isdirty" -ne 0 ] ; then
 		fullvers="$fullvers+ $(date +%F\ %T\ %Z)"
@@ -257,7 +277,7 @@ for scheme in $schemes ; do
 	scheme=`echo $scheme | sed 's/^[[:space:]]//'`
 
 	echo "SCHEME=$scheme"
-	
+
 	# packaged output goes in Releases if tagged, Development otherwise
 	if [ "$nocommit" -eq "0" ] ; then
 		basedir=Releases
@@ -266,13 +286,13 @@ for scheme in $schemes ; do
 	fi
 
 	releasedir="$basedir/$scheme/$fullvers"
-	mkdir -p "$releasedir"  
+	mkdir -p "$releasedir"
 
   (xcodebuild -project "$xcodeproject.xcodeproj" -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
 
   xcodebuild_fail_count=`grep -c '\*\* BUILD FAILED \*\*' "$basedir/xcodebuild.log"`
 
-  if [ "$xcodebuild_fail_count" -ne "0" ]; then 
+  if [ "$xcodebuild_fail_count" -ne "0" ]; then
     die "Build Failed - see above"
   fi
 
@@ -283,7 +303,7 @@ for scheme in $schemes ; do
   app=`find "$latestXCArchive" -name *.app`
   appname=$scheme # could derive this from $app
   dsym="$latestXCArchive/dSYMs/$scheme.app.dSYM"
-  
+
   echo "$latestXCArchive"
 
   # package for ad hoc
@@ -297,10 +317,23 @@ for scheme in $schemes ; do
   echo "app: $app"
   echo ==========================================================\n\n\n
 
-  /usr/bin/xcrun -sdk iphoneos PackageApplication -v "$app" \
+  cp -Rp "$app" "$projectdir/$releasedir/"
+  WORKING_APP="$projectdir/$releasedir/$scheme.app"
+
+  processIcon "${WORKING_APP}" "Icon_base.png"
+  processIcon "${WORKING_APP}" "Icon_base@2x.png"
+  processIcon "${WORKING_APP}" "Icon_base~iPad.png"
+  processIcon "${WORKING_APP}" "Icon_base@2x~iPad.png"
+
+  /usr/bin/xcrun -sdk iphoneos PackageApplication -v "$WORKING_APP" \
        -o "$projectdir/$releasedir/$scheme.ipa" \
        --sign "$DISTRIBUTION_IDENTITY" \
        --embed "$ADHOC_PRO"
+
+  # scared
+  if [ -d "$WORKING_APP" ]; then
+    rm -rf "$WORKING_APP"
+  fi
 
   # # package for store
   # cp -Rp "$app" "$projectdir/$releasedir/"
@@ -318,14 +351,14 @@ for scheme in $schemes ; do
 		ditto -c -k --keepParent -rsrc "$dsym" "$output" || die "Failed to compress debug info"
 		printf "\t\t\t$output\n" >> $logname
 	fi
-	
+
   if [ "$nodistribute" -eq "0" ]; then
-  
+
     SKIP_LIST=0 # leftover
 
     if [ "$SKIP_LIST" -eq "0" -a -f "$projectdir/.testflight" ]; then
       . "$projectdir/.testflight"
-    
+
       echo
       echo "Enter release notes (end w/ a ^D):"
       echo
@@ -343,7 +376,7 @@ for scheme in $schemes ; do
         -F notify=True  \
         -F replace=True \
         -F distribution_lists="$DISTRIBUTION_LISTS" | perl -ne 'if (/"install_url":\s+"([^"]+)"/){ print "$1\n";}'`
-      
+
       if [ -f "$projectdir/.campfire" ]; then
         . "$projectdir/.campfire"
         curl -u "$CF_ROOM_TOKEN":X -H 'Content-Type: application/json' \
@@ -352,7 +385,7 @@ for scheme in $schemes ; do
       fi
     fi
   fi #end is_adhoc check
-	
+
 done
 IFS=$SAVEIFS
 
