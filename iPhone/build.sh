@@ -288,9 +288,26 @@ for scheme in $schemes ; do
 	releasedir="$basedir/$scheme/$fullvers"
 	mkdir -p "$releasedir"
 
-  (xcodebuild -project "$xcodeproject.xcodeproj" -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+  PROJECT_SPEC_ARG=("-project" "$xcodeproject.xcodeproj")
+  PROJECT_SPEC_USING="PROJECT"
+  if [ -d "$xcodeproject.xcworkspace" ]; then
+    PROJECT_SPEC_ARG=("-workspace" "$xcodeproject.xcworkspace")
+    PROJECT_SPEC_USING="WORKSPACE"
+  fi
+
+  echo
+  echo
+  echo BUILDING USING ${PROJECT_SPEC_USING}
+  echo
+  echo
+  sleep 2
+
+  (xcodebuild ${PROJECT_SPEC_ARG[@]} -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
 
   xcodebuild_fail_count=`grep -c '\*\* BUILD FAILED \*\*' "$basedir/xcodebuild.log"`
+  if [ $xcodebuild_fail_count -eq 0 ]; then
+    xcodebuild_fail_count=`grep -c 'following build commands failed' "$basedir/xcodebuild.log"`
+  fi
 
   if [ "$xcodebuild_fail_count" -ne "0" ]; then
     die "Build Failed - see above"
