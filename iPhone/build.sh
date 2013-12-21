@@ -136,6 +136,7 @@ fi
 project="$(basename $(pwd))"
 projectdir="$(pwd)"
 nocommit=0
+workspace=0
 nodistribute=0
 force_distribute=0
 schemes=
@@ -171,6 +172,7 @@ fi
 #
 while [ -n "$*" ]; do
 	case "$1" in
+	    -w) workspace=1 ; shift ;;
 		-n) nocommit=1
 		    if [ $force_distribute -eq 0 ] ; then
 		      nodistribute=1
@@ -288,7 +290,11 @@ for scheme in $schemes ; do
 	releasedir="$basedir/$scheme/$fullvers"
 	mkdir -p "$releasedir"
 
-  (xcodebuild -project "$xcodeproject.xcodeproj" -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+  if [ "$workspace" -eq "0" ] ; then
+    (xcodebuild -workspace "$xcodeproject.xcworkspace" -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+  else
+    (xcodebuild  -project "$xcodeproject.xcodeproj" -scheme "$scheme" -parallelizeTargets clean $build_command 2>&1 | tee "$basedir/xcodebuild.log") || die "Build failed"
+  fi
 
   xcodebuild_fail_count=`grep -c '\*\* BUILD FAILED \*\*' "$basedir/xcodebuild.log"`
 
